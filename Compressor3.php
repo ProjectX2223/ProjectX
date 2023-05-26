@@ -115,6 +115,7 @@ function image_compressor_select_images_page() {
     ?>
     <div class="wrap">
         <h1>Select Images</h1>
+        <!-- here action。might change  -->
         <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
             <!--  bug fixed -->
             <input type="hidden" name="action" value="compress_images">
@@ -194,13 +195,18 @@ function image_compressor_compress_images() {
     foreach ($image_ids as $image_id) {
         //guid=url
         $image_src = wp_get_attachment_image_src($image_id, 'full')[0];
+        //image_id的附件的自定义字段= compressed_image_src，压缩文件作为mata数据存起来
         $compressed_image_src = get_post_meta($image_id, 'compressed_image_src', true);
+        //测试
+        // $original_size = filesize(get_attached_file($image_id));
            $original_file = get_attached_file($image_id);
            $original_size = filesize($original_file);
 
-
+       // $original_size = filesize(get_attached_file($image_src));
+        //没有这个字段compressed_image_src的话，运行下面
         if (!$compressed_image_src) {
             $ratio = get_option('image_compressor_ratio', 80);
+            //user defined function：image_compressor_compress_image，该函数返回的是新的图像资源的资源id
             $image_compressed = image_compressor_compress_image($image_src, $ratio);
             if ($image_compressed) {
                 $attachment = get_post($image_id);
@@ -210,6 +216,7 @@ function image_compressor_compress_images() {
 
                 // Save the compressed image to a file
                 if (wp_check_filetype($compressed_file)['ext'] === 'jpg') {
+                    // 新的附件资源，保存的路径名，压缩率
                     imagejpeg($image_compressed, $compressed_file, $ratio);
                 } else {
                     imagepng($image_compressed, $compressed_file, round(9 * $ratio / 100));
@@ -217,22 +224,36 @@ function image_compressor_compress_images() {
 
                 // Replace the original attachment with the compressed image
                 $file_type = wp_check_filetype($compressed_file)['ext'];
+                //路径名
                 $file = array(
                     'name' => $filename,
                     'tmp_name' => $compressed_file,
                 );
-               
+               // 将本地文件上传到WordPress的媒体库，并创建图片附件，返回附件id
                 $attachment_id = media_handle_sideload($file, $image_id);
+                //case1 ：原图image 在压缩后成功被删除后的话，新的被压缩的文件就可以返回上传，返回一个新attachment_id = 正确对象true
+                //case2 ：原图image 在压缩后没有被删除后的话，新的被压缩的文件返回上传，但是imageid存在了，所以返回一个attachment_id = 错误对象false
+//错误的话=true，！后=false， 对的话=false，！后true，所以这里说的是attachment-id=case 1
                 if (!is_wp_error($attachment_id)) {
                     $compressed_url = wp_get_attachment_url($attachment_id);
+                    // 不存在 找不到文件
+                    //$total_saved_size += filesize($compressed_file) - filesize(get_attached_file($image_id));
+                    //$total_saved_size += abs(filesize($compressed_file) - $original_size);
                     $total_saved_size += abs(filesize(get_attached_file($attachment_id) )- $original_size);
                     update_post_meta($image_id, 'compressed_image_src', $compressed_url);
 
+//替代
+// 将原始附件的 URL 替换为压缩后附件的 URL
     $image_src = $compressed_url;
+    // 获取附件的元数据
 $attachment_metadata = wp_get_attachment_metadata($image_id);
+
+// 更新元数据中的文件路径
 $compressed_image_path = str_replace(wp_get_upload_dir()['basedir'], '', $compressed_url);
 $attachment_metadata['file'] = $compressed_url;
 $attachment_metadata['sizes']['full']['file'] = $compressed_url;
+
+// 更新附件的元数据
 wp_update_attachment_metadata($image_id, $attachment_metadata);
 
 
@@ -257,6 +278,7 @@ wp_update_attachment_metadata($image_id, $attachment_metadata);
 }
 
 
+//compress image function，该函数返回的是新的图像资源的资源id
 function image_compressor_compress_image($image_src, $ratio) {
 
     // Get the file type and create the corresponding image resource
